@@ -9,7 +9,7 @@ from sqlalchemy import text
 from typing import List, Optional
 import io
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from src import Nounapi
+# from src import Nounapi
 # Initialize the FastAPI app
 app = FastAPI()
 
@@ -56,7 +56,7 @@ class ModifierUpdate(BaseModel):
     abbreviation: str
     description: str
     isactive: bool
-    message: Optional[str]
+    # message: Optional[str]
 
 class ModifierResponse(BaseModel):
     modifier_id: Optional[str]  # Make this field optional
@@ -64,6 +64,7 @@ class ModifierResponse(BaseModel):
     abbreviation:str
     description:str
     isactive:bool
+    message: Optional[str]
        # Add a message field for responses
 
 
@@ -74,15 +75,19 @@ async def generate_modifier_id(db: AsyncSession) -> str:
     last_modifier_id = result.scalar()
 
     if last_modifier_id is not None:
-        # Extract the numeric part of the noun_id
+        # Extract the numeric part of the modifier_id
         try:
             prefix, num_part = last_modifier_id.split('_')
+            if prefix != 'M':
+                raise HTTPException(status_code=500, detail=f"Unexpected modifier_id prefix: {prefix}")
+
             new_id_number = int(num_part) + 1
-            return f"{prefix}_{new_id_number}"  # Return the new noun_id in the same format
+            return f"{prefix}_{new_id_number:04d}"  # Ensuring 4 digits format
         except ValueError:
             raise HTTPException(status_code=500, detail=f"Invalid modifier_id format: {last_modifier_id}")
     else:
-        return "M_1"  # If no entries, start with "M_1"
+        return "M_0001"  # If no entries, start with "M_0001"
+
 
 @app.get("/Modifier", response_model=List[ModifierResponse])
 async def get_noun_values(db: AsyncSession = Depends(get_db)):
@@ -102,7 +107,7 @@ async def get_noun_values(db: AsyncSession = Depends(get_db)):
             abbreviation=row[2],
             description=row[3],
             isactive=row[4],
-             message="ok"  # Explicitly setting message to None or remove this line
+            message="ok"  # Explicitly setting message to None or remove this line
         ) for row in rows]
 
         return modifiers
