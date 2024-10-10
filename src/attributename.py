@@ -9,6 +9,8 @@ from sqlalchemy import text
 from typing import List, Optional
 import io
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+# from catalogue_core.src.Nounapi import NounUpdate
+# from catalogue_core.src.nounmodifier import NounModifierResponse
 
 # Initialize the FastAPI app
 app = FastAPI()
@@ -40,25 +42,27 @@ async def get_db():
 
 
 # Table name
-TABLE_NAME = "noun_mstr"
+TABLE_NAME = "attribute_master"
 
 
 # Pydantic models
-class NounCreate(BaseModel):
-    noun: str
+class AttributeCreate(BaseModel):
+    attribute_name: str
+    nounmodifier_id:str
     abbreviation: str
     description: str
     isactive: bool
     # message: Optional[str]
-class NounUpdate(BaseModel):
-    noun: str
+class AttributeUpdate(BaseModel):
+    attribute_name: str
     abbreviation: str
     description: str
     isactive: bool
     # message: Optional[str]
-class NounResponse(BaseModel):
-    noun_id: Optional[str]  # Make this field optional
-    noun: str
+class AttributeResponse(BaseModel):
+    attribute_id: Optional[str]
+    nounmodifier_id:str# Make this field optional
+    attribute_name: str
     abbreviation:str
     description:str
     isactive:bool
@@ -66,87 +70,102 @@ class NounResponse(BaseModel):
 
 
 # Function to generate new noun_id based on existing entries
-async def generate_noun_id(db: AsyncSession) -> str:
-    query = text(f"SELECT noun_id FROM {TABLE_NAME} ORDER BY noun_id DESC LIMIT 1")
-    result = await db.execute(query)
-    last_noun_id = result.scalar()
+async def generate_attribute_id(db: AsyncSession):
+    result = await db.execute(text("SELECT MAX(attribute_id) FROM attribute_master"))
+    last_id = result.scalar()  # Get the last id from the database
 
-    if last_noun_id is not None:
-        # Extract the numeric part of the noun_id
-        try:
-            prefix, num_part = last_noun_id.split('_')
-            new_id_number = int(num_part) + 1
-            return f"{prefix}_{new_id_number}"  # Return the new noun_id in the same format
-        except ValueError:
-            raise HTTPException(status_code=500, detail=f"Invalid noun_id format: {last_noun_id}")
+    # Extract the number part from the last_id
+    if last_id:
+        number_part = int(last_id.split('_')[1])  # Assuming the format is ATR_XXXX
+        new_number_part = number_part + 1
     else:
-        return "N_1"  # If no entries, start with "N_1"
+        new_number_part = 1  # Start from 1 if there's no entry
 
-@app.get("/Noun", response_model=List[NounResponse])
+    return f"ATR_{new_number_part:04d}"  # Format it as ATR_XXXX
+
+
+async def get_existing_nounmodifier_id(db: AsyncSession) -> str:
+    query = text("SELECT nounmodifier_id FROM attribute_master ORDER BY attribute_id DESC LIMIT 1")
+    result = await db.execute(query)
+    return result.scalar() or "NM_0000"  # Return a default if not found
+
+# Helper function to increment IDs like "N_0990", "M_0990"
+def increment_id(existing_id: str) -> str:
+    prefix, num_part = existing_id.split('_')
+    new_number = int(num_part) + 1
+    return f"{prefix}_{new_number:04d}"  # Maintain format with leading zeros
+
+@app.get("/Attribute", response_model=List[AttributeResponse])
 async def get_noun_values(db: AsyncSession = Depends(get_db)):
     try:
         query = text(f"""
-            SELECT noun_id, noun,abbreviation,description,isactive
+            SELECT attribute_id,nounmodifier_id, attribute_name,abbreviation,description,isactive
             FROM {TABLE_NAME}
-            ORDER BY noun_id
+            ORDER BY attribute_id
         """)
         result = await db.execute(query)
         rows = result.fetchall()
 
         # Map the fetched rows to the NounResponse model
-        nouns = [NounResponse(
-            noun_id=row[0],
-            noun=row[1],
-            abbreviation=row[2],
-            description=row[3],
-            isactive=row[4],
+        attributes = [AttributeResponse(
+            attribute_id=row[0],
+            nounmodifier_id=row[1],
+            attribute_name=row[2],
+            abbreviation=row[3],
+            description=row[4],
+            isactive=row[5],
             message="ok"  # Explicitly setting message to None or remove this line
         ) for row in rows]
 
-        return nouns
+        return attributes
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.post("/Noun", response_model=NounResponse)
-async def create_noun(entry: NounCreate, db: AsyncSession = Depends(get_db)):
+@app.post("/Attribute", response_model=AttributeResponse)
+async def create_attributename(entry: AttributeCreate, db: AsyncSession = Depends(get_db)):
     try:
-        if not entry.noun.strip():
-            raise HTTPException(status_code=400, detail="Noun cannot be an empty string or just whitespace")
+        if not entry.attribute_name.strip():
+            raise HTTPException(status_code=400, detail="Attribute cannot be an empty string or just whitespace")
 
-        # Check if the noun already exists (optional check to prevent duplicates by noun value)
-        existing_noun = await db.execute(text(f"SELECT 1 FROM {TABLE_NAME} WHERE noun = :noun"), {"noun": entry.noun})
-        if existing_noun.fetchone():
-            raise HTTPException(status_code=400, detail="Noun already exists.")
+        existing_attribute_name = await db.execute(
+            text(f"SELECT 1 FROM {TABLE_NAME} WHERE attribute_name = :attribute_name"),
+            {"attribute_name": entry.attribute_name}
+        )
+        if existing_attribute_name.fetchone():
+            raise HTTPException(status_code=400, detail="attribute_name already exists.")
 
-        # Generate a new noun_id
-        new_noun_id = await generate_noun_id(db)
+        existing_nounmodifier_id = await get_existing_nounmodifier_id(db)
 
-        # Insert into the table with the generated noun_id
+        new_nounmodifier_id = increment_id(existing_nounmodifier_id)
+
+        # Generate the new attribute_id in the format ATR_XXXX
+        new_attribute_id = await generate_attribute_id(db)
+
         query = text(f"""
-            INSERT INTO {TABLE_NAME} (noun_id, noun, abbreviation, description, isactive)
-            VALUES (:noun_id, :noun, :abbreviation, :description, :isactive)
-            RETURNING noun_id, noun, abbreviation, description, isactive
+            INSERT INTO {TABLE_NAME} (attribute_id, nounmodifier_id, attribute_name, abbreviation, description, isactive)
+            VALUES (:attribute_id, :nounmodifier_id, :attribute_name, :abbreviation, :description, :isactive)
+            RETURNING attribute_id, nounmodifier_id, attribute_name, abbreviation, description, isactive
         """)
         result = await db.execute(query, {
-            "noun_id": new_noun_id,
-            "noun": entry.noun,
+            "attribute_id": new_attribute_id,
+            "nounmodifier_id": new_nounmodifier_id,
+            "attribute_name": entry.attribute_name,
             "abbreviation": entry.abbreviation,
             "description": entry.description,
             "isactive": entry.isactive
         })
         await db.commit()
 
-        # Fetching inserted values
-        inserted_noun_id, inserted_noun, inserted_abbreviation, inserted_description, inserted_isactive = result.fetchone()
-
+        inserted_values = result.fetchone()
         return {
-            "noun_id": inserted_noun_id,
-            "noun": inserted_noun,
-            "abbreviation": inserted_abbreviation,
-            "description": inserted_description,
-            "isactive": inserted_isactive,
-            "message": "Noun Created successfully"
+            "attribute_id": inserted_values[0],
+            "nounmodifier_id": inserted_values[1],
+            "attribute_name": inserted_values[2],
+            "abbreviation": inserted_values[3],
+            "description": inserted_values[4],
+            "isactive": inserted_values[5],
+            "message": "AttributeName Created successfully"
         }
 
     except IntegrityError:
@@ -160,20 +179,21 @@ async def create_noun(entry: NounCreate, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 
+
 # Updating an existing noun
-@app.put("/Noun/{noun_id}", response_model=NounResponse)
-async def update_noun(noun_id: str, entry: NounUpdate, db: AsyncSession = Depends(get_db)):
+@app.put("/Attribute/{attribute_id}", response_model=AttributeResponse)
+async def update_attribute_name(attribute_id: str, entry: AttributeUpdate, db: AsyncSession = Depends(get_db)):
     try:
         # Fetch the existing noun by noun_id
-        existing_noun = await db.execute(text(f"SELECT * FROM {TABLE_NAME} WHERE noun_id = :noun_id"), {"noun_id": noun_id})
-        row = existing_noun.fetchone()
+        existing_attribute = await db.execute(text(f"SELECT * FROM {TABLE_NAME} WHERE attribute_id = :attribute_id"), {"attribute_id": attribute_id})
+        row = existing_attribute.fetchone()
 
         if row is None:
-            raise HTTPException(status_code=404, detail=f"Noun with id {noun_id} not found.")
+            raise HTTPException(status_code=404, detail=f"Noun with id {attribute_id} not found.")
 
         # Update the fields that are provided (allow partial updates)
         update_data = {
-            "noun": entry.noun if entry.noun else row[1],
+            "attribute_name": entry.attribute_name if entry.attribute_name else row[1],
             "abbreviation": entry.abbreviation if entry.abbreviation else row[2],
             "description": entry.description if entry.description else row[3],
             "isactive": entry.isactive if entry.isactive is not None else row[4]
@@ -182,13 +202,13 @@ async def update_noun(noun_id: str, entry: NounUpdate, db: AsyncSession = Depend
         # Update the noun in the database
         query = text(f"""
             UPDATE {TABLE_NAME} 
-            SET noun = :noun, abbreviation = :abbreviation, description = :description, isactive = :isactive
+            SET attribute_name = :attribute_name, abbreviation = :abbreviation, description = :description, isactive = :isactive
             WHERE noun_id = :noun_id
             RETURNING noun_id, noun, abbreviation, description, isactive
         """)
         result = await db.execute(query, {
-            "noun_id": noun_id,
-            "noun": update_data["noun"],
+            "attribute_id": attribute_id,
+            "attribute_name": update_data["attribute_name"],
             "abbreviation": update_data["abbreviation"],
             "description": update_data["description"],
             "isactive": update_data["isactive"]
@@ -198,8 +218,8 @@ async def update_noun(noun_id: str, entry: NounUpdate, db: AsyncSession = Depend
         updated_row = result.fetchone()
 
         return {
-            "noun_id": updated_row[0],
-            "noun": updated_row[1],
+            "attribute_id": updated_row[0],
+            "attribute_name": updated_row[1],
             "abbreviation": updated_row[2],
             "description": updated_row[3],
             "isactive": updated_row[4],
@@ -211,15 +231,15 @@ async def update_noun(noun_id: str, entry: NounUpdate, db: AsyncSession = Depend
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 # Deleting a noun using noun_id
-@app.delete("/Noun/{noun_id}", response_model=dict)
-async def delete_noun(noun_id: str, db: AsyncSession = Depends(get_db)):
+@app.delete("/Attribute/{attribute_id}", response_model=dict)
+async def delete_noun(attribute_id: str, db: AsyncSession = Depends(get_db)):
     try:
         query_check = text(f"""
-            SELECT noun_id
+            SELECT attribute_id
             FROM {TABLE_NAME}
-            WHERE noun_id = :noun_id
+            WHERE attribute_id = :attribute_id
         """)
-        result_check = await db.execute(query_check, {"noun_id": noun_id})
+        result_check = await db.execute(query_check, {"attribute_id": attribute_id})
         noun = result_check.fetchone()
 
         if not noun:
@@ -227,12 +247,12 @@ async def delete_noun(noun_id: str, db: AsyncSession = Depends(get_db)):
 
         query_delete = text(f"""
             DELETE FROM {TABLE_NAME}
-            WHERE noun_id = :noun_id
+            WHERE attribute_id = :attribute_id
         """)
-        await db.execute(query_delete, {"noun_id": noun_id})
+        await db.execute(query_delete, {"attribute_id": attribute_id})
         await db.commit()
 
-        return {"message": "Noun entry deleted successfully"}
+        return {"message": "AttributeName entry deleted successfully"}
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
@@ -269,7 +289,7 @@ async def upload_excel(file: UploadFile = File(...), db: AsyncSession = Depends(
                     """)
                     await db.execute(query_update, {"noun": noun_value, "noun_id": existing_noun[0]})
                 else:
-                    new_noun_id = await generate_noun_id(db)  # Generate new noun_id
+                    new_noun_id = await generate_attribute_id(db)  # Generate new noun_id
                     query_insert = text(f"""
                         INSERT INTO {TABLE_NAME} (noun_id, noun)
                         VALUES (:noun_id, :noun)
@@ -312,69 +332,6 @@ async def export_excel(db: AsyncSession = Depends(get_db)):
 # Run the app using: uvicorn main:app --reload
 
 
-# Updating an existing noun
-@app.put("/Noun/{noun_id}", response_model=NounResponse)
-async def update_noun(noun_id: str, entry: NounUpdate, db: AsyncSession = Depends(get_db)):
-    try:
-        query_check = text(f"""
-            SELECT noun_id, noun
-            FROM {TABLE_NAME}
-            WHERE noun_id = :noun_id
-        """)
-        result_check = await db.execute(query_check, {"noun_id": noun_id})
-        noun = result_check.fetchone()
-
-        if not noun:
-            raise HTTPException(status_code=404, detail="Noun not found")
-
-        query_update = text(f"""
-            UPDATE {TABLE_NAME}
-            SET noun = :noun
-            WHERE noun_id = :noun_id
-            RETURNING noun_id, noun
-        """)
-        result_update = await db.execute(query_update, {"noun": entry.noun, "noun_id": noun_id})
-        await db.commit()
-
-        updated_noun = result_update.fetchone()
-        if updated_noun is None:
-            raise HTTPException(status_code=400, detail="Failed to update noun")
-
-        updated_noun_id, updated_noun_value = updated_noun
-        return NounResponse(noun_id=updated_noun_id, noun=updated_noun_value, message="Noun entry updated successfully")
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-# Deleting a noun using noun_id
-@app.delete("/Noun/{noun_id}", response_model=dict)
-async def delete_noun(noun_id: str, db: AsyncSession = Depends(get_db)):
-    try:
-        query_check = text(f"""
-            SELECT noun_id
-            FROM {TABLE_NAME}
-            WHERE noun_id = :noun_id
-        """)
-        result_check = await db.execute(query_check, {"noun_id": noun_id})
-        noun = result_check.fetchone()
-
-        if not noun:
-            raise HTTPException(status_code=404, detail="Noun not found")
-
-        query_delete = text(f"""
-            DELETE FROM {TABLE_NAME}
-            WHERE noun_id = :noun_id
-        """)
-        await db.execute(query_delete, {"noun_id": noun_id})
-        await db.commit()
-
-        return {"message": "Noun entry deleted successfully"}
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
-
 # Upload an Excel file containing nouns
 @app.post("/upload-excel")
 async def upload_excel(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
@@ -406,7 +363,7 @@ async def upload_excel(file: UploadFile = File(...), db: AsyncSession = Depends(
                     """)
                     await db.execute(query_update, {"noun": noun_value, "noun_id": existing_noun[0]})
                 else:
-                    new_noun_id = await generate_noun_id(db)  # Generate new noun_id
+                    new_noun_id = await generate_attribute_id(db)  # Generate new noun_id
                     query_insert = text(f"""
                         INSERT INTO {TABLE_NAME} (noun_id, noun)
                         VALUES (:noun_id, :noun)

@@ -3,9 +3,10 @@ from fastapi import FastAPI, HTTPException, Depends, File, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.dialects.mysql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import text
+from sqlalchemy import text, modifier
 from typing import List, Optional
 import io
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -47,7 +48,8 @@ TABLE_NAME = "nounmodifier_combined"
 class NounModifierCreate(BaseModel):
     # noun_id: str
     # modifier_id: str
-    nounmodifier: str
+    noun: str
+    modifier:str
     abbreviation: str
     description: str
     isactive: bool
@@ -56,7 +58,8 @@ class NounModifierCreate(BaseModel):
 class NounModifierUpdate(BaseModel):
     noun_id: str
     modifier_id: str
-    nounmodifier: str
+    noun: str
+    modifier:str
     abbreviation: str
     description: str
     isactive: bool
@@ -65,7 +68,8 @@ class NounModifierUpdate(BaseModel):
 class NounModifierResponse(BaseModel):
     noun_id: str
     modifier_id: str
-    nounmodifier: str
+    noun: str
+    modifier:str
     abbreviation: str
     description: str
     isactive: bool
@@ -124,7 +128,7 @@ async def generate_nounmodifier_id(db: AsyncSession) -> str:
 async def get_noun_values(db: AsyncSession = Depends(get_db)):
     try:
         query = text(f"""
-            SELECT noun_id,modifier_id, nounmodifier,abbreviation,description,isactive,nounmodifier_id
+            SELECT noun_id,modifier_id, noun,modifier,abbreviation,description,isactive,nounmodifier_id
             FROM {TABLE_NAME}
             ORDER BY nounmodifier_id
         """)
@@ -135,11 +139,12 @@ async def get_noun_values(db: AsyncSession = Depends(get_db)):
         nouns = [NounModifierResponse(
             noun_id=row[0],
             modifier_id=row[1],
-            nounmodifier=row[2],
-            abbreviation=row[3],
-            description=row[4],
-            isactive=row[5],
-            nounmodifier_id=row[6],
+            noun=row[2],
+            modifier=row[3],
+            abbreviation=row[4],
+            description=row[5],
+            isactive=row[6],
+            nounmodifier_id=row[7],
             message="ok"  # Explicitly setting message to None or remove this line
         ) for row in rows]
 
@@ -174,13 +179,14 @@ async def create_nounmodifier(entry: NounModifierCreate, db: AsyncSession = Depe
 
         # Insert into nounmodifier_combined
         query = text(f"""
-            INSERT INTO{TABLE_NAME} (nounmodifier_id, nounmodifier,abbreviation, description, isactive noun_id, modifier_id)
-            VALUES (:nounmodifier_id, :nounmodifier, :abbreviation, :description, :isactive :noun_id, :modifier_id)
-            RETURNING nounmodifier_id, nounmodifier, abbreviation, description, isactive,noun_id, modifier_id
+            INSERT INTO{TABLE_NAME} (nounmodifier_id, noun,modifier,abbreviation, description, isactive noun_id, modifier_id)
+            VALUES (:nounmodifier_id, :noun,modifier, :abbreviation, :description, :isactive :noun_id, :modifier_id)
+            RETURNING nounmodifier_id, noun,modifier, abbreviation, description, isactive,noun_id, modifier_id
         """)
         result = await db.execute(query, {
             "nounmodifier_id": new_nounmodifier_id,
-            "nounmodifier": entry.nounmodifier,
+            "noun": entry.noun,
+            "modifier":entry.modifier,
             "noun_id": new_noun_id,
             "abbreviation":entry.abbreviation,
             "description":entry.description,
@@ -190,12 +196,13 @@ async def create_nounmodifier(entry: NounModifierCreate, db: AsyncSession = Depe
         await db.commit()
 
         # Fetching inserted values
-        inserted_nounmodifier_id, inserted_nounmodifier, inserted_abbreviation,inserted_description,inserted_isactive,inserted_noun_id, inserted_modifier_id = result.fetchone()
+        inserted_nounmodifier_id, inserted_noun,inserted_modifier, inserted_abbreviation,inserted_description,inserted_isactive,inserted_noun_id, inserted_modifier_id = result.fetchone()
 
         return {
             "noun_id": inserted_noun_id,
             "modifier_id": inserted_modifier_id,
-            "nounmodifier": inserted_nounmodifier,
+            "noun": inserted_noun,
+            "modifier":inserted_modifier,
             "abbreviation": inserted_abbreviation,
             "description": inserted_description,
             "isactive":inserted_isactive,
@@ -214,63 +221,56 @@ async def create_nounmodifier(entry: NounModifierCreate, db: AsyncSession = Depe
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 
-
-
 # Updating an existing noun
 @app.put("/NounModifier/{nounmodifier_id}", response_model=NounModifierResponse)
 async def update_nounmodifier(nounmodifier_id: str, entry: NounModifierUpdate, db: AsyncSession = Depends(get_db)):
     try:
-        # Check if the noun exists
-        query_check = text(f"""
-            SELECT nounmodifier_id
-            FROM {TABLE_NAME}
-            WHERE nounmodifier_id = :nounmodifier_id
-        """)
-        result_check = await db.execute(query_check, {"nounmodifier_id": nounmodifier_id})
-        noun = result_check.fetchone()
+        # Fetch the existing noun by noun_id
+        existing_noun = await db.execute(text(f"SELECT * FROM {TABLE_NAME} WHERE nounmodifier_id = :nounmodifier_id"), {"nounmodifier_id": nounmodifier_id})
+        row = existing_noun.fetchone()
 
-        if not noun:
-            raise HTTPException(status_code=404, detail="Noun not found")
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"Noun with id {nounmodifier_id} not found.")
 
-        # Update the noun with new values
-        query_update = text(f"""
+        # Update the fields that are provided (allow partial updates)
+        update_data = {
+            "noun": entry.noun if entry.noun else row[1],
+            "modifier":entry.modifier if entry.modifier else row[2],
+            "abbreviation": entry.abbreviation if entry.abbreviation else row[3],
+            "description": entry.description if entry.description else row[4],
+            "isactive": entry.isactive if entry.isactive is not None else row[5]
+        }
+
+        # Update the noun in the database
+        query = text(f"""
             UPDATE {TABLE_NAME}
-            SET noun = :noun, 
-                abbreviation = :abbreviation, 
-                description = :description, 
-                isactive = :isactive
-            WHERE noun_id = :noun_id
-            RETURNING noun_id, noun, abbreviation, description, isactive
+            SET nounmodifier = :noun,modifier, abbreviation = :abbreviation, description = :description, isactive = :isactive
+            WHERE nounmodifier_id = :nounmodifier_id    
+            RETURNING nounmodifier_id, noun, abbreviation, description, isactive
         """)
-        result_update = await db.execute(query_update, {
-            "noun": entry.noun,
-            "abbreviation": entry.abbreviation,
-            "description": entry.description,
-            "isactive": entry.isactive,
-            "noun_id": noun_id
+        result = await db.execute(query, {
+            "nounmodifier_id": nounmodifier_id,
+            "nounmodifier": update_data["nounmodifier"],
+            "abbreviation": update_data["abbreviation"],
+            "description": update_data["description"],
+            "isactive": update_data["isactive"]
         })
         await db.commit()
 
-        # Fetch the updated values
-        updated_noun = result_update.fetchone()
-        if updated_noun is None:
-            raise HTTPException(status_code=400, detail="Failed to update noun")
+        updated_row = result.fetchone()
 
-        # Unpack the result
-        updated_noun_id, updated_noun_value, updated_abbreviation, updated_description, updated_isactive = updated_noun
-
-        return NounModifierResponse(
-            noun_id=updated_noun_id,
-            noun=updated_noun_value,
-            abbreviation=updated_abbreviation,
-            description=updated_description,
-            isactive=updated_isactive,
-            message="Noun entry updated successfully"
-        )
+        return {
+            "nounmodifier_id": updated_row[0],
+            "nounmodifier": updated_row[1],
+            "abbreviation": updated_row[2],
+            "description": updated_row[3],
+            "isactive": updated_row[4],
+            "message": "Noun updated successfully"
+        }
 
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 
 
