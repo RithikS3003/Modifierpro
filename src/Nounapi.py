@@ -63,7 +63,6 @@ class NounData(BaseModel):
     abbreviation: str
     description: str
     isactive: bool
-
 class NounResponse(BaseModel):
     message: str
     data: List[NounData] # Add a message field for responses
@@ -85,10 +84,6 @@ async def generate_noun_id(db: AsyncSession) -> str:
             raise HTTPException(status_code=500, detail=f"Invalid noun_id format: {last_noun_id}")
     else:
         return "N_1"  # If no entries, start with "N_1"
-
-
-
-
 
 @app.get("/Noun", response_model=NounResponse)
 async def get_noun_values(db: AsyncSession = Depends(get_db)):

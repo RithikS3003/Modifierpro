@@ -58,14 +58,16 @@ class ModifierUpdate(BaseModel):
     isactive: bool
     # message: Optional[str]
 
-class ModifierResponse(BaseModel):
+class ModifierData(BaseModel):
     modifier_id: Optional[str]  # Make this field optional
     modifier: str
-    abbreviation:str
-    description:str
-    isactive:bool
-    message: Optional[str]
-       # Add a message field for responses
+    abbreviation: str
+    description: str
+    isactive: bool
+
+class ModifierResponse(BaseModel):
+    message: str
+    data: List[ModifierData]
 
 
 # Function to generate new noun_id based on existing entries
@@ -89,7 +91,7 @@ async def generate_modifier_id(db: AsyncSession) -> str:
         return "M_0001"  # If no entries, start with "M_0001"
 
 
-@app.get("/Modifier", response_model=List[ModifierResponse])
+@app.get("/Modifier", response_model=ModifierResponse)
 async def get_noun_values(db: AsyncSession = Depends(get_db)):
     try:
         query = text(f"""
@@ -101,16 +103,16 @@ async def get_noun_values(db: AsyncSession = Depends(get_db)):
         rows = result.fetchall()
 
         # Map the fetched rows to the NounResponse model
-        modifiers = [ModifierResponse(
+        modifiers = [ModifierData(
             modifier_id=row[0],
             modifier=row[1],
             abbreviation=row[2],
             description=row[3],
-            isactive=row[4],
-            message="ok"  # Explicitly setting message to None or remove this line
+            isactive=row[4]
+            # Explicitly setting message to None or remove this line
         ) for row in rows]
 
-        return modifiers
+        return ModifierResponse(message="sucess",data=modifiers)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

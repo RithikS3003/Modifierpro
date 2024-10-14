@@ -59,14 +59,18 @@ class AttributeUpdate(BaseModel):
     description: str
     isactive: bool
     # message: Optional[str]
-class AttributeResponse(BaseModel):
+class AttributeData(BaseModel):
     attribute_id: Optional[str]
-    nounmodifier_id:str# Make this field optional
+    nounmodifier_id: str  # Make this field optional
     attribute_name: str
-    abbreviation:str
-    description:str
-    isactive:bool
-    message: Optional[str]  # Add a message field for responses
+    abbreviation: str
+    description: str
+    isactive: bool
+
+
+class AttributeResponse(BaseModel):
+    message: str
+    data: List[AttributeData]  # Add a message field for responses
 
 
 # Function to generate new noun_id based on existing entries
@@ -95,7 +99,7 @@ def increment_id(existing_id: str) -> str:
     new_number = int(num_part) + 1
     return f"{prefix}_{new_number:04d}"  # Maintain format with leading zeros
 
-@app.get("/Attribute", response_model=List[AttributeResponse])
+@app.get("/Attribute", response_model=AttributeResponse)
 async def get_noun_values(db: AsyncSession = Depends(get_db)):
     try:
         query = text(f"""
@@ -107,17 +111,17 @@ async def get_noun_values(db: AsyncSession = Depends(get_db)):
         rows = result.fetchall()
 
         # Map the fetched rows to the NounResponse model
-        attributes = [AttributeResponse(
+        attributes = [AttributeData(
             attribute_id=row[0],
             nounmodifier_id=row[1],
             attribute_name=row[2],
             abbreviation=row[3],
             description=row[4],
-            isactive=row[5],
-            message="ok"  # Explicitly setting message to None or remove this line
+            isactive=row[5]
+           # Explicitly setting message to None or remove this line
         ) for row in rows]
 
-        return attributes
+        return AttributeResponse(message="success", data=attributes)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -159,14 +163,19 @@ async def create_attributename(entry: AttributeCreate, db: AsyncSession = Depend
 
         inserted_values = result.fetchone()
         return {
-            "attribute_id": inserted_values[0],
-            "nounmodifier_id": inserted_values[1],
-            "attribute_name": inserted_values[2],
-            "abbreviation": inserted_values[3],
-            "description": inserted_values[4],
-            "isactive": inserted_values[5],
-            "message": "AttributeName Created successfully"
+            "message": "success",
+            "data": [{
+
+                "attribute_id": inserted_values[0],
+                "nounmodifier_id": inserted_values[1],
+                "attribute_name": inserted_values[2],
+                "abbreviation": inserted_values[3],
+                "description": inserted_values[4],
+                "isactive": inserted_values[5]
+
+            }]
         }
+        return JSONResponse(content=response_data)
 
     except IntegrityError:
         await db.rollback()
