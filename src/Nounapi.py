@@ -9,6 +9,7 @@ from sqlalchemy import text
 from typing import List, Optional
 import io
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from starlette.responses import JSONResponse
 
 # Initialize the FastAPI app
 app = FastAPI()
@@ -56,13 +57,16 @@ class NounUpdate(BaseModel):
     description: str
     isactive: bool
     # message: Optional[str]
-class NounResponse(BaseModel):
-    noun_id: Optional[str]  # Make this field optional
+class NounData(BaseModel):
+    noun_id: str
     noun: str
-    abbreviation:str
-    description:str
-    isactive:bool
-    message: Optional[str]  # Add a message field for responses
+    abbreviation: str
+    description: str
+    isactive: bool
+
+class NounResponse(BaseModel):
+    message: str
+    data: List[NounData] # Add a message field for responses
 
 
 # Function to generate new noun_id based on existing entries
@@ -82,28 +86,31 @@ async def generate_noun_id(db: AsyncSession) -> str:
     else:
         return "N_1"  # If no entries, start with "N_1"
 
-@app.get("/Noun", response_model=List[NounResponse])
+
+
+
+
+@app.get("/Noun", response_model=NounResponse)
 async def get_noun_values(db: AsyncSession = Depends(get_db)):
     try:
         query = text(f"""
-            SELECT noun_id, noun,abbreviation,description,isactive
+            SELECT noun_id, noun, abbreviation, description, isactive
             FROM {TABLE_NAME}
             ORDER BY noun_id
         """)
         result = await db.execute(query)
         rows = result.fetchall()
 
-        # Map the fetched rows to the NounResponse model
-        nouns = [NounResponse(
+        # Map the fetched rows to the NounData model
+        nouns = [NounData(
             noun_id=row[0],
             noun=row[1],
             abbreviation=row[2],
             description=row[3],
-            isactive=row[4],
-            message="ok"  # Explicitly setting message to None or remove this line
+            isactive=row[4]
         ) for row in rows]
 
-        return nouns
+        return NounResponse(message="success", data=nouns)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -114,7 +121,7 @@ async def create_noun(entry: NounCreate, db: AsyncSession = Depends(get_db)):
         if not entry.noun.strip():
             raise HTTPException(status_code=400, detail="Noun cannot be an empty string or just whitespace")
 
-        # Check if the noun already exists (optional check to prevent duplicates by noun value)
+        # Check if the noun already exists
         existing_noun = await db.execute(text(f"SELECT 1 FROM {TABLE_NAME} WHERE noun = :noun"), {"noun": entry.noun})
         if existing_noun.fetchone():
             raise HTTPException(status_code=400, detail="Noun already exists.")
@@ -140,14 +147,18 @@ async def create_noun(entry: NounCreate, db: AsyncSession = Depends(get_db)):
         # Fetching inserted values
         inserted_noun_id, inserted_noun, inserted_abbreviation, inserted_description, inserted_isactive = result.fetchone()
 
-        return {
-            "noun_id": inserted_noun_id,
-            "noun": inserted_noun,
-            "abbreviation": inserted_abbreviation,
-            "description": inserted_description,
-            "isactive": inserted_isactive,
-            "message": "Noun Created successfully"
+        response_data = {
+            "message": "success",
+            "data": [{
+                "noun_id": inserted_noun_id,
+                "noun": inserted_noun,
+                "abbreviation": inserted_abbreviation,
+                "description": inserted_description,
+                "isactive": inserted_isactive
+            }]
         }
+
+        return JSONResponse(content=response_data)
 
     except IntegrityError:
         await db.rollback()
