@@ -10,6 +10,7 @@ from sqlalchemy import text, modifier
 from typing import List, Optional
 import io
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from starlette.responses import JSONResponse
 
 # Initialize the FastAPI app
 app = FastAPI()
@@ -54,7 +55,7 @@ class NounModifierCreate(BaseModel):
     description: str
     isactive: bool
     # noun_modifier_id: str
-    message: Optional[str]
+    # message: Optional[str]
 class NounModifierUpdate(BaseModel):
     noun_id: str
     modifier_id: str
@@ -65,16 +66,18 @@ class NounModifierUpdate(BaseModel):
     isactive: bool
     nounmodifier_id: str
     # message: Optional[str]
-class NounModifierResponse(BaseModel):
+class NounModifierData(BaseModel):
     noun_id: str
     modifier_id: str
     noun: str
-    modifier:str
+    modifier: str
     abbreviation: str
     description: str
     isactive: bool
     nounmodifier_id: str
-    message: Optional[str]  # Add a message field for responses
+class NounModifierResponse(BaseModel):
+    message: str
+    data:List[NounModifierData]# Add a message field for responses
 
 
 # Function to generate new noun_id based on existing entries
@@ -124,7 +127,7 @@ async def generate_nounmodifier_id(db: AsyncSession) -> str:
     else:
         return "NM_0001"  # Start from NM_0001 if no entries exist
 
-@app.get("/NounModifier", response_model=List[NounModifierResponse])
+@app.get("/NounModifier", response_model=NounModifierResponse)
 async def get_noun_values(db: AsyncSession = Depends(get_db)):
     try:
         query = text(f"""
@@ -136,7 +139,7 @@ async def get_noun_values(db: AsyncSession = Depends(get_db)):
         rows = result.fetchall()
 
         # Map the fetched rows to the NounResponse model
-        nouns = [NounModifierResponse(
+        nounmodifiers = [NounModifierData(
             noun_id=row[0],
             modifier_id=row[1],
             noun=row[2],
@@ -144,11 +147,11 @@ async def get_noun_values(db: AsyncSession = Depends(get_db)):
             abbreviation=row[4],
             description=row[5],
             isactive=row[6],
-            nounmodifier_id=row[7],
-            message="ok"  # Explicitly setting message to None or remove this line
+            nounmodifier_id=row[7]
+
         ) for row in rows]
 
-        return nouns
+        return NounModifierResponse(message="success", data=nounmodifiers)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -159,12 +162,12 @@ async def get_noun_values(db: AsyncSession = Depends(get_db)):
 #     new_number = int(num_part) + 1
 #     return f"{prefix}_{new_number:04d}"  # Maintain format with leading zeros
 
-
 @app.post("/NounModifier", response_model=NounModifierResponse)
 async def create_nounmodifier(entry: NounModifierCreate, db: AsyncSession = Depends(get_db)):
     try:
-        if not entry.nounmodifier.strip():
-            raise HTTPException(status_code=400, detail="NounModifier cannot be an empty string or just whitespace")
+        # Validate that neither noun nor modifier is empty
+        if not entry.noun.strip() or not entry.modifier.strip():
+            raise HTTPException(status_code=400, detail="Noun or Modifier cannot be an empty string or just whitespace")
 
         # Retrieve the latest noun_id and modifier_id
         existing_noun_id = await get_existing_noun_id(db)  # Fetch last noun_id
@@ -177,38 +180,40 @@ async def create_nounmodifier(entry: NounModifierCreate, db: AsyncSession = Depe
         # Generate new nounmodifier_id
         new_nounmodifier_id = await generate_nounmodifier_id(db)
 
-        # Insert into nounmodifier_combined
+        # Insert into nounmodifier_combined table
         query = text(f"""
-            INSERT INTO{TABLE_NAME} (nounmodifier_id, noun,modifier,abbreviation, description, isactive noun_id, modifier_id)
-            VALUES (:nounmodifier_id, :noun,modifier, :abbreviation, :description, :isactive :noun_id, :modifier_id)
-            RETURNING nounmodifier_id, noun,modifier, abbreviation, description, isactive,noun_id, modifier_id
+            INSERT INTO {TABLE_NAME} (nounmodifier_id, noun, modifier, abbreviation, description, isactive, noun_id, modifier_id)
+            VALUES (:nounmodifier_id, :noun, :modifier, :abbreviation, :description, :isactive, :noun_id, :modifier_id)
+            RETURNING nounmodifier_id, noun, modifier, abbreviation, description, isactive, noun_id, modifier_id
         """)
         result = await db.execute(query, {
             "nounmodifier_id": new_nounmodifier_id,
             "noun": entry.noun,
-            "modifier":entry.modifier,
+            "modifier": entry.modifier,
+            "abbreviation": entry.abbreviation,
+            "description": entry.description,
+            "isactive": entry.isactive,
             "noun_id": new_noun_id,
-            "abbreviation":entry.abbreviation,
-            "description":entry.description,
-            "isactive":entry.isactive,
             "modifier_id": new_modifier_id,
         })
         await db.commit()
 
-        # Fetching inserted values
-        inserted_nounmodifier_id, inserted_noun,inserted_modifier, inserted_abbreviation,inserted_description,inserted_isactive,inserted_noun_id, inserted_modifier_id = result.fetchone()
+        inserted_values = result.fetchone()
 
-        return {
-            "noun_id": inserted_noun_id,
-            "modifier_id": inserted_modifier_id,
-            "noun": inserted_noun,
-            "modifier":inserted_modifier,
-            "abbreviation": inserted_abbreviation,
-            "description": inserted_description,
-            "isactive":inserted_isactive,
-            "nounmodifier_id": inserted_nounmodifier_id,
-            "message": "NounModifier Created successfully"
+        response_data = {
+            "message": "success",
+            "data": [{
+                "nounmodifier_id": inserted_values[0],
+                "noun": inserted_values[1],
+                "modifier": inserted_values[2],
+                "abbreviation": inserted_values[3],
+                "description": inserted_values[4],
+                "isactive": inserted_values[5],
+                "noun_id": inserted_values[6],
+                "modifier_id": inserted_values[7]
+            }]
         }
+        return JSONResponse(content=response_data)
 
     except IntegrityError as ie:
         await db.rollback()
@@ -219,6 +224,7 @@ async def create_nounmodifier(entry: NounModifierCreate, db: AsyncSession = Depe
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
 
 
 # Updating an existing noun

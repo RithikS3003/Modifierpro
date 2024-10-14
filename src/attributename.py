@@ -58,7 +58,7 @@ class AttributeUpdate(BaseModel):
     abbreviation: str
     description: str
     isactive: bool
-    # message: Optional[str]
+
 class AttributeData(BaseModel):
     attribute_id: Optional[str]
     nounmodifier_id: str  # Make this field optional
@@ -66,8 +66,6 @@ class AttributeData(BaseModel):
     abbreviation: str
     description: str
     isactive: bool
-
-
 class AttributeResponse(BaseModel):
     message: str
     data: List[AttributeData]  # Add a message field for responses
@@ -165,7 +163,6 @@ async def create_attributename(entry: AttributeCreate, db: AsyncSession = Depend
         return {
             "message": "success",
             "data": [{
-
                 "attribute_id": inserted_values[0],
                 "nounmodifier_id": inserted_values[1],
                 "attribute_name": inserted_values[2],
@@ -193,12 +190,15 @@ async def create_attributename(entry: AttributeCreate, db: AsyncSession = Depend
 @app.put("/Attribute/{attribute_id}", response_model=AttributeResponse)
 async def update_attribute_name(attribute_id: str, entry: AttributeUpdate, db: AsyncSession = Depends(get_db)):
     try:
-        # Fetch the existing noun by noun_id
-        existing_attribute = await db.execute(text(f"SELECT * FROM {TABLE_NAME} WHERE attribute_id = :attribute_id"), {"attribute_id": attribute_id})
+        # Fetch the existing attribute by attribute_id
+        existing_attribute = await db.execute(
+            text(f"SELECT * FROM {TABLE_NAME} WHERE attribute_id = :attribute_id"),
+            {"attribute_id": attribute_id}
+        )
         row = existing_attribute.fetchone()
 
         if row is None:
-            raise HTTPException(status_code=404, detail=f"Noun with id {attribute_id} not found.")
+            raise HTTPException(status_code=404, detail=f"Attribute with id {attribute_id} not found.")
 
         # Update the fields that are provided (allow partial updates)
         update_data = {
@@ -208,12 +208,12 @@ async def update_attribute_name(attribute_id: str, entry: AttributeUpdate, db: A
             "isactive": entry.isactive if entry.isactive is not None else row[4]
         }
 
-        # Update the noun in the database
+        # Update the attribute in the database
         query = text(f"""
             UPDATE {TABLE_NAME} 
             SET attribute_name = :attribute_name, abbreviation = :abbreviation, description = :description, isactive = :isactive
-            WHERE noun_id = :noun_id
-            RETURNING noun_id, noun, abbreviation, description, isactive
+            WHERE attribute_id = :attribute_id
+            RETURNING attribute_id, attribute_name, abbreviation, description, isactive
         """)
         result = await db.execute(query, {
             "attribute_id": attribute_id,
@@ -226,18 +226,28 @@ async def update_attribute_name(attribute_id: str, entry: AttributeUpdate, db: A
 
         updated_row = result.fetchone()
 
+        # Create the response format
+        response_data = [
+            {
+                "attribute_id": updated_row[0],
+                "nounmodifier_id": row[5],  # Assuming you have this in the original row
+                "attribute_name": updated_row[1],
+                "abbreviation": updated_row[2],
+                "description": updated_row[3],
+                "isactive": updated_row[4]
+            }
+        ]
+
         return {
-            "attribute_id": updated_row[0],
-            "attribute_name": updated_row[1],
-            "abbreviation": updated_row[2],
-            "description": updated_row[3],
-            "isactive": updated_row[4],
-            "message": "Noun updated successfully"
+            "message": "Attribute updated successfully",
+            "data": response_data  # Return the updated attribute in a list
         }
 
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+
 
 # Deleting a noun using noun_id
 @app.delete("/Attribute/{attribute_id}", response_model=dict)
