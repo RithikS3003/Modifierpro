@@ -166,61 +166,70 @@ async def create_modifier(entry: ModifierCreate, db: AsyncSession = Depends(get_
 
 
 # Updating an existing noun
-@app.put("/Modifier/{modifier_id}", response_model=ModifierResponse)
-async def update_modifier(modifier_id: str, entry: ModifierUpdate, db: AsyncSession = Depends(get_db)):
+@app.put("/modifier/{modifier_id}", response_model=ModifierResponse)
+async def update_modifier(
+        modifier_id: str,
+        entry: ModifierUpdate,
+        db: AsyncSession = Depends(get_db)
+):
     try:
-        # Check if the modifier exists
-        query_check = text(f"""
-            SELECT modifier_id
-            FROM {TABLE_NAME}
-            WHERE modifier_id = :modifier_id
-        """)
-        result_check = await db.execute(query_check, {"modifier_id": modifier_id})
-        modifier = result_check.fetchone()
+        # Fetch existing modifier
+        existing_modifier = await db.execute(
+            text(f"SELECT * FROM {TABLE_NAME} WHERE modifier_id = :modifier_id"),
+            {"modifier_id": modifier_id}
+        )
+        row = existing_modifier.fetchone()
 
-        if not modifier:
-            raise HTTPException(status_code=404, detail="Modifier not found")
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"Modifier with id {modifier_id} not found.")
 
-        # Update the modifier with new values
-        query_update = text(f"""
-            UPDATE {TABLE_NAME}
-            SET modifier = :modifier, 
-                abbreviation = :abbreviation, 
-                description = :description, 
-                isactive = :isactive
+        # Prepare the update data
+        update_data = {
+            "modifier": entry.modifier if entry.modifier is not None else row[1],
+            "abbreviation": entry.abbreviation if entry.abbreviation is not None else row[2],
+            "description": entry.description if entry.description is not None else row[3],
+            "isactive": entry.isactive if entry.isactive is not None else row[4]
+        }
+
+        # Update the existing row
+        query = text(f"""
+            UPDATE {TABLE_NAME} 
+            SET modifier = :modifier, abbreviation = :abbreviation, description = :description, isactive = :isactive
             WHERE modifier_id = :modifier_id
             RETURNING modifier_id, modifier, abbreviation, description, isactive
         """)
-        result_update = await db.execute(query_update, {
-            "modifier": entry.modifier,
-            "abbreviation": entry.abbreviation,
-            "description": entry.description,
-            "isactive": entry.isactive,
-            "modifier_id": modifier_id
+
+        result = await db.execute(query, {
+            "modifier_id": modifier_id,
+            "modifier": update_data["modifier"],
+            "abbreviation": update_data["abbreviation"],
+            "description": update_data["description"],
+            "isactive": update_data["isactive"]
         })
         await db.commit()
 
-        # Fetch the updated values
-        updated_modifier = result_update.fetchone()
-        if updated_modifier is None:
-            raise HTTPException(status_code=400, detail="Failed to update modifier")
+        updated_row = result.fetchone()
 
-        # Unpack the result
-        updated_modifier_id, updated_modifier_value, updated_abbreviation, updated_description, updated_isactive = updated_modifier
+        if updated_row is None:
+            raise HTTPException(status_code=404, detail="Update failed. Modifier not found.")
 
-        return ModifierResponse(
-            modifier_id=updated_modifier_id,
-            modifier=updated_modifier_value,
-            abbreviation=updated_abbreviation,
-            description=updated_description,
-            isactive=updated_isactive,
-            message="Modifier entry updated successfully"
-        )
+        # Construct response data
+        response_data = {
+            "modifier_id": updated_row[0],
+            "modifier": updated_row[1],
+            "abbreviation": updated_row[2],
+            "description": updated_row[3],
+            "isactive": updated_row[4]
+        }
+
+        return {
+            "message": "Modifier updated successfully",
+            "data": response_data
+        }
 
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 
 # Deleting a noun using noun_id

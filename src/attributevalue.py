@@ -55,9 +55,11 @@ class attribute_valueCreate(BaseModel):
 
 class Attribute_valueUpdate(BaseModel):
     attribute_value: str
-    abbreviation: str
-    description: str
+    attribute_value_desc: str
+    attribute_value_abbr: str
+    remarks:str
     isactive: bool
+    nounmodifier_id: Optional[str]
 
 class Attribute_valueData(BaseModel):
     attribute_value_id: Optional[str]
@@ -178,16 +180,34 @@ async def create_attribute_value(entry: attribute_valueCreate, db: AsyncSession 
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 
-
-
-@app.put("/{attribute_value_id}", response_model=Attribute_valueResponse)
-async def update_attribute_value(attribute_value_id: str, attribute_value: attribute_valueCreate,
-                                 db: AsyncSession = Depends(get_db)):
+@app.put("/AttributeValue/{attribute_value_id}", response_model=Attribute_valueResponse)
+async def update_attribute_value(attribute_value_id: str, entry: Attribute_valueUpdate, db: AsyncSession = Depends(get_db)):
     try:
-        # Ensure attribute_value_id follows the expected pattern if needed
+        # Ensure attribute_value_id follows the expected pattern
         if not attribute_value_id.startswith("ATRV_"):
             raise HTTPException(status_code=400, detail="Invalid attribute_value_id format.")
 
+        # Fetch the existing attribute value by attribute_value_id
+        existing_attribute_value = await db.execute(
+            text(f"SELECT * FROM {TABLE_NAME} WHERE attribute_value_id = :attribute_value_id"),
+            {"attribute_value_id": attribute_value_id}
+        )
+        row = existing_attribute_value.fetchone()
+
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"Attribute value with id {attribute_value_id} not found.")
+
+        # Update the fields that are provided (allow partial updates)
+        update_data = {
+            "attribute_value": entry.attribute_value if entry.attribute_value else row[1],
+            "attribute_value_desc": entry.attribute_value_desc if entry.attribute_value_desc else row[2],
+            "remarks": entry.remarks if entry.remarks else row[3],
+            "isactive": entry.isactive if entry.isactive is not None else row[4],
+            "attribute_value_abbr": entry.attribute_value_abbr if entry.attribute_value_abbr else row[5],
+            "nounmodifier_id": entry.nounmodifier_id if entry.nounmodifier_id else row[6]
+        }
+
+        # Update the attribute value in the database
         query = text(f"""
             UPDATE {TABLE_NAME}
             SET attribute_value = :attribute_value,
@@ -201,34 +221,41 @@ async def update_attribute_value(attribute_value_id: str, attribute_value: attri
         """)
         result = await db.execute(query, {
             "attribute_value_id": attribute_value_id,
-            "attribute_value": attribute_value.attribute_value,
-            "attribute_value_desc": attribute_value.attribute_value_desc,
-            "remarks": attribute_value.remarks,
-            "isactive": attribute_value.isactive,
-            "attribute_value_abbr": attribute_value.attribute_value_abbr,
-            "nounmodifier_id": attribute_value.nounmodifier_id
+            "attribute_value": update_data["attribute_value"],
+            "attribute_value_desc": update_data["attribute_value_desc"],
+            "remarks": update_data["remarks"],
+            "isactive": update_data["isactive"],
+            "attribute_value_abbr": update_data["attribute_value_abbr"],
+            "nounmodifier_id": update_data["nounmodifier_id"]
         })
         await db.commit()
 
         updated_row = result.fetchone()
         if not updated_row:
-            raise HTTPException(status_code=404, detail="attribute_value not found")
+            raise HTTPException(status_code=404, detail="Attribute value not found after update.")
 
-        # Convert the result into a dictionary and return it
-        return Attribute_valueResponse(
-            attribute_value_id=updated_row[0],
-            attribute_value=updated_row[1],
-            attribute_value_desc=updated_row[2],
-            remarks=updated_row[3],
-            isactive=updated_row[4],
-            attribute_value_abbr=updated_row[5],
-            nounmodifier_id=updated_row[6],
-            message="attribute_value updated successfully"
-        )
+        # Create the response format
+        response_data = [
+            {
+                "attribute_value_id": updated_row[0],
+                "attribute_value": updated_row[1],
+                "attribute_value_desc": updated_row[2],
+                "remarks": updated_row[3],
+                "isactive": updated_row[4],
+                "attribute_value_abbr": updated_row[5],
+                "nounmodifier_id": updated_row[6]
+            }
+        ]
+
+        return {
+            "message": "Attribute value updated successfully",
+            "data": response_data  # Return the updated attribute value wrapped in a list
+        }
 
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
 
 
 

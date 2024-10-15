@@ -203,13 +203,20 @@ async def update_noun(noun_id: str, entry: NounUpdate, db: AsyncSession = Depend
 
         updated_row = result.fetchone()
 
+        # Create the response format
+        response_data = [
+            {
+                "noun_id": updated_row[0],
+                "noun": updated_row[1],
+                "abbreviation": updated_row[2],
+                "description": updated_row[3],
+                "isactive": updated_row[4]
+            }
+        ]
+
         return {
-            "noun_id": updated_row[0],
-            "noun": updated_row[1],
-            "abbreviation": updated_row[2],
-            "description": updated_row[3],
-            "isactive": updated_row[4],
-            "message": "Noun updated successfully"
+            "message": "Noun updated successfully",
+            "data": response_data  # Return the updated noun in a list
         }
 
     except Exception as e:
