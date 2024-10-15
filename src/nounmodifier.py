@@ -79,23 +79,6 @@ class NounModifierResponse(BaseModel):
     data:List[NounModifierData]# Add a message field for responses
 
 
-# Function to generate new noun_id based on existing entries
-# async def generate_nounmodifier_id(db: AsyncSession) -> str:
-#     query = text(f"SELECT nounmodifier_id FROM {TABLE_NAME} ORDER BY nounmodifier_id DESC LIMIT 1")
-#     result = await db.execute(query)
-#     last_nounmodifier_id = result.scalar()
-#
-#     if last_nounmodifier_id is not None:
-#         # Extract the numeric part of the noun_id
-#         try:
-#             prefix, num_part = last_nounmodifier_id.split('_')
-#             new_id_number = int(num_part) + 1
-#             return f"{prefix}_{new_id_number}"  # Return the new noun_id in the same format
-#         except ValueError:
-#             raise HTTPException(status_code=500, detail=f"Invalid nounmodifier_id format: {last_nounmodifier_id}")
-#     else:
-#         return "NM_1"  # If no entries, start with "N_1"
-
 async def get_existing_noun_id(db: AsyncSession) -> str:
     query = text("SELECT noun_id FROM noun_mstr ORDER BY noun_id DESC LIMIT 1")
     result = await db.execute(query)
@@ -155,11 +138,7 @@ async def get_noun_values(db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# def increment_id(existing_id: str) -> str:
-#     # Example: existing_id = "N_0989"
-#     prefix, num_part = existing_id.split('_')
-#     new_number = int(num_part) + 1
-#     return f"{prefix}_{new_number:04d}"  # Maintain format with leading zeros
+
 
 @app.post("/NounModifier", response_model=NounModifierResponse)
 async def create_nounmodifier(entry: NounModifierCreate, db: AsyncSession = Depends(get_db)):
