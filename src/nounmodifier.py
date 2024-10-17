@@ -74,6 +74,7 @@ class NounModifierData(BaseModel):
     description: str
     isactive: bool
     nounmodifier_id: str
+    noun_modifier:str
 class NounModifierResponse(BaseModel):
     message: str
     data:List[NounModifierData]# Add a message field for responses
@@ -113,7 +114,7 @@ async def generate_nounmodifier_id(db: AsyncSession) -> str:
 async def get_noun_values(db: AsyncSession = Depends(get_db)):
     try:
         query = text(f"""
-            SELECT noun_id,modifier_id, noun,modifier,abbreviation,description,isactive,nounmodifier_id
+            SELECT noun_id,modifier_id, noun,modifier,abbreviation,description,isactive,nounmodifier_id,noun_modifier
             FROM {TABLE_NAME}
             ORDER BY nounmodifier_id
         """)
@@ -129,7 +130,8 @@ async def get_noun_values(db: AsyncSession = Depends(get_db)):
             abbreviation=row[4],
             description=row[5],
             isactive=row[6],
-            nounmodifier_id=row[7]
+            nounmodifier_id=row[7],
+            noun_modifier=row[8]
 
         ) for row in rows]
 

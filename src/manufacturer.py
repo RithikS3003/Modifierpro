@@ -45,7 +45,7 @@ class ManufacturerCreate(BaseModel):
     manufacturdesc: str
     remarks: str
     isactive: bool
-    manufacturer_abbr: str  # Adjust based on your database type
+    # manufacturer_abbr: str  # Adjust based on your database type
 
 class ManufacturerUpdate(BaseModel):
     manufacturname: str
@@ -61,7 +61,7 @@ class ManufacturerData(BaseModel):
     remarks: Optional[str]
     isactive: bool
     nounmodifier_id: str
-    manufacturer_abbr:str
+    # manufacturer_abbr:str
 
 class ManufacturerResponse(BaseModel):
     message: str
@@ -88,7 +88,7 @@ async def generate_manufacturid(db: AsyncSession) -> str:
 async def get_manufacturers(db: AsyncSession = Depends(get_db)):
     try:
         query = text(
-            "SELECT manufacturid, manufacturname, manufacturdesc, remarks, isactive, nounmodifier_id, manufacturer_abbr "
+            "SELECT manufacturid, manufacturname, manufacturdesc, remarks, isactive, nounmodifier_id "
             "FROM manufacturer_master "
             "ORDER BY manufacturid"
         )
@@ -103,8 +103,8 @@ async def get_manufacturers(db: AsyncSession = Depends(get_db)):
                 manufacturdesc=row[2],
                 remarks=str(row[3]) if row[3] is not None else "",  # Ensure remarks is a string
                 isactive=bool(row[4]),  # Convert to boolean
-                nounmodifier_id=str(row[5]),  # Ensure it is a string
-                manufacturer_abbr=str(row[6]) if row[6] is not None else ""  # Ensure abbr is a string
+                nounmodifier_id=str(row[5])  # Ensure it is a string
+                # manufacturer_abbr=str(row[6]) if row[6] is not None else ""  # Ensure abbr is a string
             ) for row in rows
         ]
 
@@ -167,7 +167,7 @@ async def create_manufacturer(entry: ManufacturerCreate, db: AsyncSession = Depe
                     "remarks": remarks,
                     "isactive": isactive,
                     "nounmodifier_id": nounmodifier_id,
-                    "manufacturer_abbr": manufacturer_abbr  # or "" if you want it empty
+                    # "manufacturer_abbr": manufacturer_abbr  # or "" if you want it empty
                 }
             ]
         }
@@ -202,8 +202,8 @@ async def update_manufacturer(manufacturid: str, manufacturer: ManufacturerUpdat
             "manufacturdesc": manufacturer.manufacturdesc if manufacturer.manufacturdesc is not None else row[2],
             "remarks": manufacturer.remarks if manufacturer.remarks is not None else row[3],
             "isactive": manufacturer.isactive if manufacturer.isactive is not None else row[4],
-            "nounmodifier_id": manufacturer.nounmodifier_id if manufacturer.nounmodifier_id is not None else row[5],
-            "manufacturer_abbr": row[6]  # Ensure manufacturer_abbr is included from the database
+            "nounmodifier_id": manufacturer.nounmodifier_id if manufacturer.nounmodifier_id is not None else row[5]
+            # "manufacturer_abbr": row[6]  
         }
 
         # Update the manufacturer in the database
@@ -215,7 +215,7 @@ async def update_manufacturer(manufacturid: str, manufacturer: ManufacturerUpdat
                 isactive = :isactive,
                 nounmodifier_id = :nounmodifier_id
             WHERE manufacturid = :manufacturid
-            RETURNING manufacturid, manufacturname, manufacturdesc, remarks, isactive, manufacturer_abbr
+            RETURNING manufacturid, manufacturname, manufacturdesc, remarks, isactive
         """)
         result = await db.execute(query, {
             "manufacturid": manufacturid,
@@ -239,7 +239,7 @@ async def update_manufacturer(manufacturid: str, manufacturer: ManufacturerUpdat
             "manufacturdesc": updated_row[2],
             "remarks": updated_row[3],
             "isactive": updated_row[4],
-            "manufacturer_abbr": updated_row[5],  # Include manufacturer_abbr in response
+            # "manufacturer_abbr": updated_row[5],  # Include manufacturer_abbr in response
             "nounmodifier_id": update_data["nounmodifier_id"]
         }
 
