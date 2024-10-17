@@ -1,71 +1,20 @@
-
-from fastapi import FastAPI, HTTPException, Depends, File, UploadFile
+import pandas as pd
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from src.db .database import get_db
+from src.model.manufactureschemas import ManufacturerCreate, ManufacturerData, ManufacturerResponse,ManufacturerUpdate
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 from typing import List, Optional
-
+import io
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from starlette.responses import JSONResponse
 
-app = FastAPI()
-
-# Add CORS middleware to allow requests from all origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Database connection details
-DATABASE_URL = "postgresql+asyncpg://postgres:postgres@192.168.0.190:5432/tagminds"
-
-# Create the async engine and session
-engine = create_async_engine(DATABASE_URL, echo=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
-
-
-# Dependency to get the DB session
-async def get_db():
-    async with SessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+app = APIRouter()
 
 TABLE_NAME = "manufacturer_master"
-# Pydantic models
-class ManufacturerCreate(BaseModel):
-    manufacturid: str
-    manufacturname: str
-    manufacturdesc: str
-    remarks: str
-    isactive: bool
-    # manufacturer_abbr: str  # Adjust based on your database type
-
-class ManufacturerUpdate(BaseModel):
-    manufacturname: str
-    manufacturdesc: Optional[str] = None
-    remarks: Optional[str] = None
-    isactive: bool
-    nounmodifier_id: str
-
-class ManufacturerData(BaseModel):
-    manufacturid: str
-    manufacturname: str
-    manufacturdesc: str
-    remarks: Optional[str]
-    isactive: bool
-    nounmodifier_id: str
-    # manufacturer_abbr:str
-
-class ManufacturerResponse(BaseModel):
-    message: str
-    data: List[ManufacturerData]
 
 async def generate_manufacturid(db: AsyncSession) -> str:
     # Fetch the maximum existing manufacturid

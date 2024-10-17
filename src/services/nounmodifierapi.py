@@ -1,83 +1,17 @@
-import pandas as pd
-from fastapi import FastAPI, HTTPException, Depends, File, UploadFile
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.dialects.mysql import insert
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import text, modifier
-from typing import List, Optional
-import io
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from starlette.responses import JSONResponse
+from src.db .database import get_db
+from src.model.nounmodifierschemas import NounModifierCreate,NounModifierUpdate, NounModifierData, NounModifierResponse
+from typing import List
+import pandas as pd
+import io
+from fastapi.responses import StreamingResponse
 
-# Initialize the FastAPI app
-app = FastAPI()
+app = APIRouter()
 
-# Add CORS middleware to allow requests from all origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Database connection details
-DATABASE_URL = "postgresql+asyncpg://postgres:postgres@192.168.0.190:5432/tagminds"
-
-# Create the async engine and session
-engine = create_async_engine(DATABASE_URL, echo=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
-
-
-# Dependency to get the DB session
-async def get_db():
-    async with SessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
-
-
-# Table name
 TABLE_NAME = "nounmodifier_combined"
-
-
-# Pydantic models
-class NounModifierCreate(BaseModel):
-    # noun_id: str
-    # modifier_id: str
-    noun: str
-    modifier:str
-    abbreviation: str
-    description: str
-    isactive: bool
-    # noun_modifier_id: str
-    # message: Optional[str]
-class NounModifierUpdate(BaseModel):
-    # noun_id: str
-    # modifier_id: str
-    noun: str
-    modifier:str
-    abbreviation: str
-    description: str
-    isactive: bool
-
-class NounModifierData(BaseModel):
-    noun_id: str
-    modifier_id: str
-    noun: str
-    modifier: str
-    abbreviation: str
-    description: str
-    isactive: bool
-    nounmodifier_id: str
-    noun_modifier:str
-class NounModifierResponse(BaseModel):
-    message: str
-    data:List[NounModifierData]# Add a message field for responses
 
 
 async def get_existing_noun_id(db: AsyncSession) -> str:
@@ -372,11 +306,3 @@ async def export_excel(db: AsyncSession = Depends(get_db)):
                                  headers={"Content-Disposition": "attachment; filename=nouns.xlsx"})
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
-# Run the app using: uvicorn main:app --reload
-
-# Run the app with uvicorn main:app --reload
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="127.0.0.1", port=8000)

@@ -1,78 +1,20 @@
-# src/attribute_value.py
-# from django.db import app
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Depends, File, UploadFile
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from src.db .database import get_db
+from src.model.attributevalueschemas import Attribute_valueData, Attribute_valueResponse, Attribute_valueUpdate,attribute_valueCreate
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 from typing import List, Optional
 import io
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-app = FastAPI()
-
-# Add CORS middleware to allow requests from all origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Database connection details
-DATABASE_URL = "postgresql+asyncpg://postgres:postgres@192.168.0.190:5432/tagminds"
-
-# Create the async engine and session
-engine = create_async_engine(DATABASE_URL, echo=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
-
-
-# Dependency to get the DB session
-async def get_db():
-    async with SessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
-
+app = APIRouter()
 
 TABLE_NAME = "attribute_value_master"
-
-
-# Pydantic models
-class attribute_valueCreate(BaseModel):
-    attribute_value: str
-    attribute_value_desc: Optional[str] = None
-    remarks: Optional[str] = None
-    isactive: bool
-    nounmodifier_id: str
-    attribute_value_abbr: Optional[str] = None  # New field
-
-
-class Attribute_valueUpdate(BaseModel):
-    attribute_value: str
-    attribute_value_desc: str
-    attribute_value_abbr: str
-    remarks:str
-    isactive: bool
-    nounmodifier_id: Optional[str]
-
-class Attribute_valueData(BaseModel):
-    attribute_value_id: Optional[str]
-    attribute_value: str  # Make this field optional
-    attribute_value_desc: str
-    nounmodifier_id: str
-    remarks: str
-    attribute_value_abbr:str
-    isactive: bool
-class Attribute_valueResponse(BaseModel):
-    message: str
-    data: List[Attribute_valueData]
-
 
 async def generate_attribute_value_id(db: AsyncSession) -> str:
     # Fetch the maximum existing attribute_value_id

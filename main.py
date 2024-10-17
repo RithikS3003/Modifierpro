@@ -1,25 +1,45 @@
 import uvicorn
-# from catalogue_core.src.db import database  # This import should be here
-from src.nounmodifier import app as noun_modifier
-from src.modifierapi import app as modi_app
-from src.Nounapi import app as noun_app
-from src.manufacturer import app as manufacturer
-from src.attributevalue import app as attribute_value
-from src.attributename import app as attribute_name
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from src.services.nounapi import app as noun_router
+from src.services.nounmodifierapi import app as nounmodifier_router
+from src.services.modifierapi import app as modifier_router
+from src.services.attributenameapi import app as attributename_router
+from src.services.attributevalueapi import app as attributevalue_router
+from src.services.manufactureapi import app as manufacture_router
+from src.db.database import engine, Base
 
 app = FastAPI()
 
-# @app.get("/")
-# async def root():
-#     return {"message": "Hello World"}
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-app.mount("/master_modifier", modi_app)
-app.mount("/master_noun", noun_app)
-app.mount("/master_noun_modifier", noun_modifier)
-app.mount("/master_manufacturer", manufacturer)
-app.mount("/master_attribute_value", attribute_value)
-app.mount("/master_attribute_name", attribute_name)
+# Include the  router
+app.include_router(noun_router, prefix="/Noun", tags=["Noun"])
+app.include_router(nounmodifier_router, prefix="/NounModifier", tags=["NounModifier"])
+app.include_router(modifier_router, prefix="/Modifier", tags=["Modifier"])
+app.include_router(attributename_router,prefix="/Attributename",tags=["Attributename"])
+app.include_router(attributevalue_router,prefix="/Attributevalue",tags=["Attributevalue"])
+app.include_router(manufacture_router,prefix="/Manufacure",tags=["Manufacure"])
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8001)
+    import uvicorn
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+
+
+
+
+
+
+
+    # Create tables
+# @app.on_event("startup")
+# async def startup():
+#     async with engine.begin() as conn:
+#         await conn.run_sync(Base.metadata.create_all)
