@@ -3,7 +3,6 @@ from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from models import Noun
 from schemas import NounCreate, NounUpdate, NounResponse, ModifierData, ModifierResponse
 from database import get_db
 from typing import List
