@@ -80,7 +80,7 @@ async def create_noun(entry: NounCreate, db: AsyncSession = Depends(get_db)) -> 
 
         print(f"Successfully created noun: {new_noun}")
 
-        # Return the newly created noun details
+        # Return the newly created noun detailss
         return NounResponse(
 
             attribute_id=new_noun.attribute_id,
